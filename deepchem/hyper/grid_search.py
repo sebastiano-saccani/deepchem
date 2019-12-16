@@ -33,6 +33,7 @@ class HyperparamOpt(object):
                         output_transformers,
                         metric,
                         use_max=True,
+                        fit_args={},
                         logdir=None):
     """Perform hyperparams search according to params_dict.
 
@@ -77,7 +78,7 @@ class HyperparamOpt(object):
         model_dir = tempfile.mkdtemp()
 
       model = self.model_class(model_params, model_dir)
-      model.fit(train_dataset)
+      model.fit(train_dataset, **fit_args)
 
       evaluator = Evaluator(model, valid_dataset, output_transformers)
       multitask_scores = evaluator.compute_model_performance([metric])

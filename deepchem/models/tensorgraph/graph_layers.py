@@ -148,7 +148,7 @@ class DTNNEmbedding(KerasLayer):
 
   def __init__(self,
                n_embedding=30,
-               periodic_table_length=30,
+               periodic_table_length=84,
                init='glorot_uniform',
                **kwargs):
     """

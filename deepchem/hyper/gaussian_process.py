@@ -30,6 +30,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       direction=True,
       n_features=1024,
       n_tasks=1,
+      fit_args={},
       max_iter=20,
       search_range=4,
       hp_invalid_list=[
@@ -139,8 +140,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     param_name = ['l' + format(i, '02d') for i in range(20)]
     param = dict(zip(param_name[:n_param], param_range))
 
-    data_dir = os.environ['DEEPCHEM_DATA_DIR']
-    log_file = os.path.join(data_dir, log_file)
+#    data_dir = os.environ['DEEPCHEM_DATA_DIR']
+#    log_file = os.path.join(data_dir, log_file)
 
     def f(l00=0,
           l01=0,
@@ -198,8 +199,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         # Record hyperparameters
         f.write(str(hyper_parameters))
         f.write('\n')
-      if isinstance(self.model_class, str) or isinstance(
-          self.model_class, unicode):
+      if isinstance(self.model_class, str):
         try:
           train_scores, valid_scores, _ = benchmark_classification(
               train_dataset,
@@ -224,8 +224,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       else:
         model_dir = tempfile.mkdtemp()
         model = self.model_class(hyper_parameters, model_dir)
-        model.fit(train_dataset, **hyper_parameters)
-        model.save()
+        model.fit(train_dataset, **fit_args)#, **hyper_parameters)
+        # model.save()
         evaluator = Evaluator(model, valid_dataset, output_transformers)
         multitask_scores = evaluator.compute_model_performance(metric)
         score = multitask_scores[metric[0].name]
@@ -273,8 +273,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       # Record hyperparameters
       f.write(str(params_dict))
       f.write('\n')
-    if isinstance(self.model_class, str) or isinstance(self.model_class,
-                                                       unicode):
+    if isinstance(self.model_class, str):
       try:
         train_scores, valid_scores, _ = benchmark_classification(
             train_dataset,

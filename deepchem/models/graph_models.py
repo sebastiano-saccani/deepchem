@@ -174,6 +174,7 @@ class DTNNModel(KerasModel):
   def __init__(self,
                n_tasks,
                n_embedding=30,
+               periodic_table_length=84,
                n_hidden=100,
                n_distance=100,
                distance_min=-1,
@@ -207,6 +208,7 @@ class DTNNModel(KerasModel):
       raise ValueError("Only 'regression' mode is currently supported")
     self.n_tasks = n_tasks
     self.n_embedding = n_embedding
+    self.periodic_table_length = periodic_table_length
     self.n_hidden = n_hidden
     self.n_distance = n_distance
     self.distance_min = distance_min
@@ -228,7 +230,8 @@ class DTNNModel(KerasModel):
     distance_membership_j = Input(shape=tuple(), dtype=tf.int32)
 
     dtnn_embedding = layers.DTNNEmbedding(
-        n_embedding=self.n_embedding)(atom_number)
+        n_embedding=self.n_embedding,
+        periodic_table_length=self.periodic_table_length)(atom_number)
     if self.dropout > 0.0:
       dtnn_embedding = Dropout(rate=self.dropout)(dtnn_embedding)
     dtnn_layer1 = layers.DTNNStep(
