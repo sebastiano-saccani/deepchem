@@ -34,6 +34,7 @@ class MultitaskClassifier(KerasModel):
                dropouts=0.5,
                activation_fns=tf.nn.relu,
                n_classes=2,
+               loss=None,
                **kwargs):
     """Create a MultitaskClassifier.
 
@@ -119,9 +120,11 @@ class MultitaskClassifier(KerasModel):
                       n_classes))(Dense(n_tasks * n_classes)(prev_layer))
     output = Softmax()(logits)
     model = tf.keras.Model(inputs=mol_features, outputs=[output, logits])
+    if loss is None:
+      loss = dc.models.losses.SoftmaxCrossEntropy()
     super(MultitaskClassifier, self).__init__(
         model,
-        dc.models.losses.SoftmaxCrossEntropy(),
+        loss,
         output_types=['prediction', 'loss'],
         **kwargs)
 
@@ -154,6 +157,7 @@ class MultitaskRegressor(KerasModel):
                weight_decay_penalty_type="l2",
                dropouts=0.5,
                activation_fns=tf.nn.relu,
+               loss=None,
                uncertainty=False,
                **kwargs):
     """Create a MultitaskRegressor.
@@ -259,7 +263,8 @@ class MultitaskRegressor(KerasModel):
     else:
       outputs = [output]
       output_types = ['prediction']
-      loss = dc.models.losses.L2Loss()
+      if loss is None:
+        loss = dc.models.losses.L2Loss()
     model = tf.keras.Model(
         inputs=[mol_features, dropout_switch], outputs=outputs)
     super(MultitaskRegressor, self).__init__(
