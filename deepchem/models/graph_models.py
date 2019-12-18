@@ -40,6 +40,7 @@ class WeaveModel(KerasModel):
                mode="classification",
                n_classes=2,
                batch_size=100,
+               loss=None,
                **kwargs):
     """
     Parameters
@@ -103,12 +104,14 @@ class WeaveModel(KerasModel):
       output = Softmax()(logits)
       outputs = [output, logits]
       output_types = ['prediction', 'loss']
-      loss = SoftmaxCrossEntropy()
+      if loss is None:
+        loss = SoftmaxCrossEntropy()
     else:
       output = Dense(n_tasks)(weave_gather)
       outputs = [output]
       output_types = ['prediction']
-      loss = L2Loss()
+      if loss is None:
+        loss = L2Loss()
     model = tf.keras.Model(
         inputs=[
             atom_features, pair_features, pair_split, atom_split, atom_to_pair
@@ -508,6 +511,7 @@ class GraphConvModel(KerasModel):
                mode="classification",
                number_atom_features=75,
                n_classes=2,
+               loss=None,
                uncertainty=False,
                batch_size=100,
                **kwargs):
@@ -599,7 +603,8 @@ class GraphConvModel(KerasModel):
       output = Softmax()(logits)
       outputs = [output, logits]
       output_types = ['prediction', 'loss']
-      loss = SoftmaxCrossEntropy()
+      if loss is None:
+        loss = SoftmaxCrossEntropy()
     else:
       output = Dense(n_tasks)(self.neural_fingerprint)
       output = TrimGraphOutput()([output, n_samples])
@@ -616,7 +621,8 @@ class GraphConvModel(KerasModel):
       else:
         outputs = [output]
         output_types = ['prediction']
-        loss = L2Loss()
+        if loss is None:
+          loss = L2Loss()
     model = tf.keras.Model(
         inputs=[
             atom_features, degree_slice, membership, n_samples, dropout_switch
