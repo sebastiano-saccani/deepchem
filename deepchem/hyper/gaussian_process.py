@@ -22,19 +22,16 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
 
   def hyperparam_search(
       self,
-      params_dict,
+      hyperparam_range,
       train_dataset,
       valid_dataset,
       output_transformers,
       metric,
       direction=True,
-      n_features=1024,
-      n_tasks=1,
       fit_args={},
       max_iter=20,
-      search_range=4,
       hp_invalid_list=[
-          'seed', 'nb_epoch', 'penalty_type', 'dropouts', 'bypass_dropouts',
+          'seed', 'nb_epoch', 'penalty_type', #'dropouts', 'bypass_dropouts',
           'n_pair_feat', 'fit_transformers', 'min_child_weight',
           'max_delta_step', 'subsample', 'colsample_bylevel',
           'colsample_bytree', 'reg_alpha', 'reg_lambda', 'scale_pos_weight',
@@ -90,58 +87,37 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     """
 
     assert len(metric) == 1, 'Only use one metric'
-    hyper_parameters = params_dict
-    hp_list = list(hyper_parameters.keys())
+    hp_list = list(hyperparam_range.keys())
     for hp in hp_invalid_list:
       if hp in hp_list:
         hp_list.remove(hp)
 
-    hp_list_class = [hyper_parameters[hp].__class__ for hp in hp_list]
+    hp_list_class = [hyperparam_range[hp][0].__class__ for hp in hp_list]
     assert set(hp_list_class) <= set([list, int, float])
     # Float or int hyper parameters(ex. batch_size, learning_rate)
-    hp_list_single = [
-        hp_list[i] for i in range(len(hp_list)) if not hp_list_class[i] is list
-    ]
+    hp_list_single = [hp for i, hp in enumerate(hp_list) if hp_list_class[i] is not list]
     # List of float or int hyper parameters(ex. layer_sizes)
-    hp_list_multiple = [(hp_list[i], len(hyper_parameters[hp_list[i]]))
-                        for i in range(len(hp_list))
+    hp_list_multiple = [(hp, len(hyperparam_range[hp]))
+                        for i, hp in enumerate(hp_list)
                         if hp_list_class[i] is list]
 
     # Number of parameters
     n_param = len(hp_list_single)
     if len(hp_list_multiple) > 0:
       n_param = n_param + sum([hp[1] for hp in hp_list_multiple])
+
     # Range of optimization
     param_range = []
     for hp in hp_list_single:
-      if hyper_parameters[hp].__class__ is int:
-        param_range.append((('int'), [
-            hyper_parameters[hp] // search_range,
-            hyper_parameters[hp] * search_range
-        ]))
-      else:
-        param_range.append((('cont'), [
-            hyper_parameters[hp] / search_range,
-            hyper_parameters[hp] * search_range
-        ]))
+      param_range.append(('int' if isinstance(hyperparam_range[hp][0], int) else 'cont',
+                          hyperparam_range[hp]))
     for hp in hp_list_multiple:
-      if hyper_parameters[hp[0]][0].__class__ is int:
-        param_range.extend([(('int'), [
-            hyper_parameters[hp[0]][i] // search_range,
-            hyper_parameters[hp[0]][i] * search_range
-        ]) for i in range(hp[1])])
-      else:
-        param_range.extend([(('cont'), [
-            hyper_parameters[hp[0]][i] / search_range,
-            hyper_parameters[hp[0]][i] * search_range
-        ]) for i in range(hp[1])])
+      param_range.extend([('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
+                           pr) for pr in hyperparam_range[hp[0]]])
 
     # Dummy names
     param_name = ['l' + format(i, '02d') for i in range(20)]
     param = dict(zip(param_name[:n_param], param_range))
-
-#    data_dir = os.environ['DEEPCHEM_DATA_DIR']
-#    log_file = os.path.join(data_dir, log_file)
 
     def f(l00=0,
           l01=0,
@@ -180,6 +156,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       args = locals()
       # Input hyper parameters
       i = 0
+      hyper_parameters = {}
       for hp in hp_list_single:
         hyper_parameters[hp] = float(args[param_name[i]])
         if param_range[i][0] == 'int':
@@ -190,49 +167,25 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             float(args[param_name[j]]) for j in range(i, i + hp[1])
         ]
         if param_range[i][0] == 'int':
-          hyper_parameters[hp[0]] = map(int, hyper_parameters[hp[0]])
+          hyper_parameters[hp[0]] = list(map(int, hyper_parameters[hp[0]]))
         i = i + hp[1]
 
       logger.info(hyper_parameters)
       # Run benchmark
+      model_dir = tempfile.mkdtemp()
       with open(log_file, 'a') as f:
         # Record hyperparameters
-        f.write(str(hyper_parameters))
-        f.write('\n')
-      if isinstance(self.model_class, str):
-        try:
-          train_scores, valid_scores, _ = benchmark_classification(
-              train_dataset,
-              valid_dataset,
-              valid_dataset, ['task_placeholder'] * n_tasks,
-              output_transformers,
-              n_features,
-              metric,
-              self.model_class,
-              hyper_parameters=hyper_parameters)
-        except AssertionError:
-          train_scores, valid_scores, _ = benchmark_regression(
-              train_dataset,
-              valid_dataset,
-              valid_dataset, ['task_placeholder'] * n_tasks,
-              output_transformers,
-              n_features,
-              metric,
-              self.model_class,
-              hyper_parameters=hyper_parameters)
-        score = valid_scores[self.model_class][metric[0].name]
-      else:
-        model_dir = tempfile.mkdtemp()
-        model = self.model_class(hyper_parameters, model_dir)
-        model.fit(train_dataset, **fit_args)#, **hyper_parameters)
-        # model.save()
-        evaluator = Evaluator(model, valid_dataset, output_transformers)
-        multitask_scores = evaluator.compute_model_performance(metric)
-        score = multitask_scores[metric[0].name]
-
+        f.write('Hyperparams: {}'.format(hyper_parameters))
+        f.write('Model saved in folder: {}'.format(model_dir))
+      model = self.model_class(hyper_parameters, model_dir)
+      model.fit(train_dataset, **fit_args)
+      # model.save()
+      evaluator = Evaluator(model, valid_dataset, output_transformers)
+      multitask_scores = evaluator.compute_model_performance(metric)
+      score = multitask_scores[metric[0].name]
       with open(log_file, 'a') as f:
         # Record performances
-        f.write(str(score))
+        f.write('Score: {:.4f}'.format(score))
         f.write('\n')
       # GPGO maximize performance by default, set performance to its negative value for minimization
       if direction:
@@ -255,55 +208,19 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     hp_opt, valid_performance_opt = gpgo.getResult()
     # Readout best hyper parameters
     i = 0
+    hyperparam_opt = {}
     for hp in hp_list_single:
-      hyper_parameters[hp] = float(hp_opt[param_name[i]])
+      hyperparam_opt[hp] = float(hp_opt[param_name[i]])
       if param_range[i][0] == 'int':
-        hyper_parameters[hp] = int(hyper_parameters[hp])
+        hyperparam_opt[hp] = int(hyperparam_opt[hp])
       i = i + 1
     for hp in hp_list_multiple:
-      hyper_parameters[hp[0]] = [
+      hyperparam_opt[hp[0]] = [
           float(hp_opt[param_name[j]]) for j in range(i, i + hp[1])
       ]
       if param_range[i][0] == 'int':
-        hyper_parameters[hp[0]] = map(int, hyper_parameters[hp[0]])
+        hyperparam_opt[hp[0]] = list(map(int, hyperparam_opt[hp[0]]))
       i = i + hp[1]
 
-    # Compare best model to default hyperparameters
-    with open(log_file, 'a') as f:
-      # Record hyperparameters
-      f.write(str(params_dict))
-      f.write('\n')
-    if isinstance(self.model_class, str):
-      try:
-        train_scores, valid_scores, _ = benchmark_classification(
-            train_dataset,
-            valid_dataset,
-            valid_dataset, ['task_placeholder'] * n_tasks,
-            output_transformers,
-            n_features,
-            metric,
-            self.model_class,
-            hyper_parameters=params_dict)
-      except AssertionError:
-        train_scores, valid_scores, _ = benchmark_regression(
-            train_dataset,
-            valid_dataset,
-            valid_dataset, ['task_placeholder'] * n_tasks,
-            output_transformers,
-            n_features,
-            metric,
-            self.model_class,
-            hyper_parameters=params_dict)
-      score = valid_scores[self.model_class][metric[0].name]
-      with open(log_file, 'a') as f:
-        # Record performances
-        f.write(str(score))
-        f.write('\n')
-      if not direction:
-        score = -score
-      if score > valid_performance_opt:
-        # Optimized model is better, return hyperparameters
-        return params_dict, score
-
-    # Return default hyperparameters
-    return hyper_parameters, valid_performance_opt
+    # Return optimized hyperparameters
+    return hyperparam_opt, valid_performance_opt
