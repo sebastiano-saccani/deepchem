@@ -173,20 +173,17 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       logger.info(hyper_parameters)
       # Run benchmark
       model_dir = tempfile.mkdtemp()
-      with open(log_file, 'a') as f:
-        # Record hyperparameters
-        f.write('Hyperparams: {}'.format(hyper_parameters))
-        f.write('Model saved in folder: {}'.format(model_dir))
+      # Record hyperparameters
+      print('Hyperparams: {}'.format(hyper_parameters), file=log_file, flush=True)
+      print('Model saved in folder: {}'.format(model_dir), file=log_file, flush=True)
       model = self.model_class(hyper_parameters, model_dir)
       model.fit(train_dataset, **fit_args)
       # model.save()
       evaluator = Evaluator(model, valid_dataset, output_transformers)
       multitask_scores = evaluator.compute_model_performance(metric)
       score = multitask_scores[metric[0].name]
-      with open(log_file, 'a') as f:
-        # Record performances
-        f.write('Score: {:.4f}'.format(score))
-        f.write('\n')
+      # Record performances
+      print('Score: {:.4f}\n'.format(score), file=log_file, flush=True)
       # GPGO maximize performance by default, set performance to its negative value for minimization
       if direction:
         return score
