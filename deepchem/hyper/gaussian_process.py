@@ -97,14 +97,18 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     # Float or int hyper parameters(ex. batch_size, learning_rate)
     hp_list_single = [hp for i, hp in enumerate(hp_list) if hp_list_class[i] is not list]
     # List of float or int hyper parameters(ex. layer_sizes)
-    hp_list_multiple = [(hp, len(hyperparam_range[hp]))
-                        for i, hp in enumerate(hp_list)
-                        if hp_list_class[i] is list]
+    hp_list_multiple = [] #structure of elements: (hp name, length of list, length of trainable params=1 or length of list)
+    for i, hp in enumerate(hp_list):
+      if hp_list_class[i] is list:
+        if isinstance(hyperparam_range[hp][-1], int):
+          hp_list_multiple.append((hp, hyperparam_range[hp][-1], 1))
+        else:
+          hp_list_multiple.append((hp, len(hyperparam_range[hp]), len(hyperparam_range[hp])))
 
     # Number of parameters
     n_param = len(hp_list_single)
     if len(hp_list_multiple) > 0:
-      n_param = n_param + sum([hp[1] for hp in hp_list_multiple])
+      n_param = n_param + sum([hp[-1] for hp in hp_list_multiple])
 
     # Range of optimization
     param_range = []
@@ -112,11 +116,16 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       param_range.append(('int' if isinstance(hyperparam_range[hp][0], int) else 'cont',
                           hyperparam_range[hp]))
     for hp in hp_list_multiple:
-      param_range.extend([('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
-                           pr) for pr in hyperparam_range[hp[0]]])
+      if isinstance(hyperparam_range[hp[0]][-1], int):
+        param_range.append(('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
+                            hyperparam_range[hp[0]][0]))
+      else:
+        param_range.extend([('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
+                             pr) for pr in hyperparam_range[hp[0]]])
 
     # Dummy names
     param_name = ['l' + format(i, '02d') for i in range(20)]
+    assert n_param == len(param_range)
     param = dict(zip(param_name[:n_param], param_range))
 
     def f(l00=0,
@@ -163,12 +172,13 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
           hyper_parameters[hp] = int(hyper_parameters[hp])
         i = i + 1
       for hp in hp_list_multiple:
-        hyper_parameters[hp[0]] = [
-            float(args[param_name[j]]) for j in range(i, i + hp[1])
-        ]
+        if hp[-1] == 1:
+          hyper_parameters[hp[0]] = [float(args[param_name[i]])] * hp[1]
+        else:
+          hyper_parameters[hp[0]] = [float(args[param_name[j]]) for j in range(i, i + hp[1])]
         if param_range[i][0] == 'int':
           hyper_parameters[hp[0]] = list(map(int, hyper_parameters[hp[0]]))
-        i = i + hp[1]
+        i = i + hp[-1]
 
       logger.info(hyper_parameters)
       # Run benchmark
@@ -212,9 +222,10 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         hyperparam_opt[hp] = int(hyperparam_opt[hp])
       i = i + 1
     for hp in hp_list_multiple:
-      hyperparam_opt[hp[0]] = [
-          float(hp_opt[param_name[j]]) for j in range(i, i + hp[1])
-      ]
+      if hp[-1] == 1:
+        hyperparam_opt[hp[0]] = [float(hp_opt[param_name[i]])] * hp[1]
+      else:
+        hyperparam_opt[hp[0]] = [float(hp_opt[param_name[j]]) for j in range(i, i + hp[1])]
       if param_range[i][0] == 'int':
         hyperparam_opt[hp[0]] = list(map(int, hyperparam_opt[hp[0]]))
       i = i + hp[1]

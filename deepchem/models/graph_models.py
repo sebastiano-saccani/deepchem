@@ -112,6 +112,7 @@ class WeaveModel(KerasModel):
       output_types = ['prediction']
       if loss is None:
         loss = L2Loss()
+    self.loss = loss
     model = tf.keras.Model(
         inputs=[
             atom_features, pair_features, pair_split, atom_split, atom_to_pair
@@ -623,6 +624,7 @@ class GraphConvModel(KerasModel):
         output_types = ['prediction']
         if loss is None:
           loss = L2Loss()
+    self.loss = loss
     model = tf.keras.Model(
         inputs=[
             atom_features, degree_slice, membership, n_samples, dropout_switch
