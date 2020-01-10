@@ -11,6 +11,11 @@ import os
 from deepchem.hyper.grid_search import HyperparamOpt
 from deepchem.utils.evaluate import Evaluator
 from deepchem.molnet.run_benchmark_models import benchmark_classification, benchmark_regression
+import pyGPGO
+from pyGPGO.covfunc import matern32
+from pyGPGO.acquisition import Acquisition
+from pyGPGO.surrogates.GaussianProcess import GaussianProcess
+from pyGPGO.GPGO import GPGO
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +132,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     param_name = ['l' + format(i, '02d') for i in range(20)]
     assert n_param == len(param_range)
     param = dict(zip(param_name[:n_param], param_range))
+    print(param)
 
     def f(l00=0,
           l01=0,
@@ -200,11 +206,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       else:
         return -score
 
-    import pyGPGO
-    from pyGPGO.covfunc import matern32
-    from pyGPGO.acquisition import Acquisition
-    from pyGPGO.surrogates.GaussianProcess import GaussianProcess
-    from pyGPGO.GPGO import GPGO
+    # GPGO optimization
     cov = matern32()
     gp = GaussianProcess(cov)
     acq = Acquisition(mode='ExpectedImprovement')
@@ -213,6 +215,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     gpgo.run(max_iter=max_iter)
 
     hp_opt, valid_performance_opt = gpgo.getResult()
+    
     # Readout best hyper parameters
     i = 0
     hyperparam_opt = {}
@@ -228,7 +231,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         hyperparam_opt[hp[0]] = [float(hp_opt[param_name[j]]) for j in range(i, i + hp[1])]
       if param_range[i][0] == 'int':
         hyperparam_opt[hp[0]] = list(map(int, hyperparam_opt[hp[0]]))
-      i = i + hp[1]
+      i = i + hp[-1]
 
     # Return optimized hyperparameters
     return hyperparam_opt, valid_performance_opt
