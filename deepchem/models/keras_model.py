@@ -88,6 +88,7 @@ class KerasModel(Model):
                optimizer=None,
                tensorboard=False,
                tensorboard_log_frequency=100,
+               configproto=None,
                **kwargs):
     """Create a new KerasModel.
 
@@ -154,6 +155,10 @@ class KerasModel(Model):
           raise ValueError('Unknown output type "%s"' % type)
       if len(self._loss_outputs) == 0:
         self._loss_outputs = self._prediction_outputs
+    self.configproto = configproto
+    if self.configproto is not None and tf.executing_eagerly():
+        raise ValueError(
+            "Setting session configuration is not currently supported in eager mode")
     self._built = False
     self._inputs_built = False
     self._training_ops_built = False
@@ -166,7 +171,7 @@ class KerasModel(Model):
       return
     self._built = True
     if not tf.executing_eagerly():
-      self.session = tf.Session()
+      self.session = tf.Session(config=self.configproto)
     self._global_step = tf.Variable(0, trainable=False)
     self._tf_optimizer = self.optimizer._create_optimizer(self._global_step)
     self._checkpoint = tf.train.Checkpoint(
