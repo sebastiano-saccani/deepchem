@@ -187,12 +187,9 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         i = i + hp[-1]
 
       logger.info(hyper_parameters)
-      # Run benchmark
-      model_dir = tempfile.mkdtemp()
       # Record hyperparameters
       print('Hyperparams: {}'.format(hyper_parameters), file=log_file, flush=True)
-      print('Model saved in folder: {}'.format(model_dir), file=log_file, flush=True)
-      model = self.model_class(hyper_parameters, model_dir)
+      model = self.model_class(hyper_parameters)
       model.fit(train_dataset, **fit_args)
       # model.save()
       evaluator = Evaluator(model, valid_dataset, output_transformers)
