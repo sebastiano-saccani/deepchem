@@ -31,9 +31,9 @@ class RobustMultitaskClassifier(KerasModel):
                activation_fns=tf.nn.relu,
                n_classes=2,
                bypass_layer_sizes=[100],
-               bypass_weight_init_stddevs=[.02],
-               bypass_bias_init_consts=[1.],
-               bypass_dropouts=[.5],
+               bypass_weight_init_stddevs=.02,
+               bypass_bias_init_consts=1.,
+               bypass_dropouts=.5,
                **kwargs):
     """  Create a RobustMultitaskClassifier.
 
@@ -213,9 +213,9 @@ class RobustMultitaskRegressor(KerasModel):
                dropouts=0.5,
                activation_fns=tf.nn.relu,
                bypass_layer_sizes=[100],
-               bypass_weight_init_stddevs=[.02],
-               bypass_bias_init_consts=[1.],
-               bypass_dropouts=[.5],
+               bypass_weight_init_stddevs=.02,
+               bypass_bias_init_consts=1.,
+               bypass_dropouts=.5,
                **kwargs):
     """ Create a RobustMultitaskRegressor.
 
