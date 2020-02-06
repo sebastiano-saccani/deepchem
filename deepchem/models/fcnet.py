@@ -122,7 +122,6 @@ class MultitaskClassifier(KerasModel):
     model = tf.keras.Model(inputs=mol_features, outputs=[output, logits])
     if loss is None:
       loss = dc.models.losses.SoftmaxCrossEntropy()
-    self.loss = loss
     super(MultitaskClassifier, self).__init__(
         model,
         loss,
@@ -266,7 +265,6 @@ class MultitaskRegressor(KerasModel):
       output_types = ['prediction']
       if loss is None:
         loss = dc.models.losses.L2Loss()
-    self.loss = loss
     model = tf.keras.Model(
         inputs=[mol_features, dropout_switch], outputs=outputs)
     super(MultitaskRegressor, self).__init__(

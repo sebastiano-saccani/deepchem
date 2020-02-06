@@ -30,10 +30,11 @@ class RobustMultitaskClassifier(KerasModel):
                dropouts=0.5,
                activation_fns=tf.nn.relu,
                n_classes=2,
+               loss=None,
                bypass_layer_sizes=[100],
-               bypass_weight_init_stddevs=.02,
-               bypass_bias_init_consts=1.,
-               bypass_dropouts=.5,
+               bypass_weight_init_stddevs=0.02,
+               bypass_bias_init_consts=1.0,
+               bypass_dropouts=0.5,
                **kwargs):
     """  Create a RobustMultitaskClassifier.
 
@@ -158,9 +159,11 @@ class RobustMultitaskClassifier(KerasModel):
     logits = Stack(axis=1)(task_outputs)
     output = tf.keras.layers.Softmax()(logits)
     model = tf.keras.Model(inputs=mol_features, outputs=[output, logits])
+    if loss is None:
+      loss = SoftmaxCrossEntropy()
     super(RobustMultitaskClassifier, self).__init__(
         model,
-        SoftmaxCrossEntropy(),
+        loss,
         output_types=['prediction', 'loss'],
         **kwargs)
 
@@ -212,10 +215,11 @@ class RobustMultitaskRegressor(KerasModel):
                weight_decay_penalty_type="l2",
                dropouts=0.5,
                activation_fns=tf.nn.relu,
+               loss=None,
                bypass_layer_sizes=[100],
-               bypass_weight_init_stddevs=.02,
-               bypass_bias_init_consts=1.,
-               bypass_dropouts=.5,
+               bypass_weight_init_stddevs=0.02,
+               bypass_bias_init_consts=1.0,
+               bypass_dropouts=0.5,
                **kwargs):
     """ Create a RobustMultitaskRegressor.
 
@@ -336,4 +340,6 @@ class RobustMultitaskRegressor(KerasModel):
 
     outputs = tf.keras.layers.Concatenate(axis=1)(task_outputs)
     model = tf.keras.Model(inputs=mol_features, outputs=outputs)
-    super(RobustMultitaskRegressor, self).__init__(model, L2Loss(), **kwargs)
+    if loss is None:
+      loss = L2Loss()
+    super(RobustMultitaskRegressor, self).__init__(model, loss, **kwargs)
