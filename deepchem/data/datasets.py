@@ -1011,7 +1011,7 @@ class DiskDataset(Dataset):
         [(X, y, w, ids)], data_dir=data_dir, tasks=tasks, verbose=verbose)
 
   @staticmethod
-  def merge(datasets, merge_dir=None):
+  def merge(datasets, merge_dir=None, verbose=True):
     """Merges provided datasets into a merged dataset."""
     if merge_dir is not None:
       if not os.path.exists(merge_dir):
@@ -1041,7 +1041,7 @@ class DiskDataset(Dataset):
         yield (X, y, w, ids)
 
     return DiskDataset.create_dataset(
-        generator(), data_dir=merge_dir, tasks=tasks)
+        generator(), data_dir=merge_dir, tasks=tasks, verbose=verbose)
 
   def subset(self, shard_nums, subset_dir=None):
     """Creates a subset of the original dataset on disk."""

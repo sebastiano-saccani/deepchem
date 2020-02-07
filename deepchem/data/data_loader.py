@@ -213,9 +213,9 @@ class DataLoader(object):
 
     def shard_generator():
       for shard_num, shard in enumerate(
-          self.get_shards(input_files, shard_size)):
+          self.get_shards(input_files, shard_size, verbose=self.verbose)):
         time1 = time.time()
-        X, valid_inds = self.featurize_shard(shard)
+        X, valid_inds = self.featurize_shard(shard, verbose=self.verbose)
         ids = shard[self.id_field].values
         ids = ids[valid_inds]
         if len(self.tasks) > 0:
@@ -239,11 +239,11 @@ class DataLoader(object):
     return DiskDataset.create_dataset(
         shard_generator(), data_dir, self.tasks, verbose=self.verbose)
 
-  def get_shards(self, input_files, shard_size):
+  def get_shards(self, input_files, shard_size, verbose=True):
     """Stub for children classes."""
     raise NotImplementedError
 
-  def featurize_shard(self, shard):
+  def featurize_shard(self, shard, verbose=True):
     """Featurizes a shard of an input dataframe."""
     raise NotImplementedError
 
@@ -257,9 +257,9 @@ class CSVLoader(DataLoader):
     """Defines a generator which returns data for each shard"""
     return load_csv_files(input_files, shard_size, verbose=verbose)
 
-  def featurize_shard(self, shard):
+  def featurize_shard(self, shard, verbose=True):
     """Featurizes a shard of an input dataframe."""
-    return featurize_smiles_df(shard, self.featurizer, field=self.smiles_field)
+    return featurize_smiles_df(shard, self.featurizer, field=self.smiles_field, verbose=verbose)
 
 
 class UserCSVLoader(DataLoader):
