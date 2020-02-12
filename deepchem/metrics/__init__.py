@@ -345,8 +345,10 @@ class Metric(object):
       NotImplementedError: If metric_str is not in METRICS.
     """
 
-    y_true = np.array(np.squeeze(y_true[w != 0]))
-    y_pred = np.array(np.squeeze(y_pred[w != 0]))
+    # y_true = np.array(np.squeeze(y_true[w != 0]))
+    # y_pred = np.array(np.squeeze(y_pred[w != 0]))
+    y_pred = np.squeeze(y_pred[np.logical_and(w != 0, np.logical_not(np.isnan(y_true)))])
+    y_true = np.squeeze(y_true[np.logical_and(w != 0, np.logical_not(np.isnan(y_true)))])
 
     if len(y_true.shape) == 0:
       n_samples = 1

@@ -22,32 +22,35 @@ import zipfile
 from PIL import Image
 
 
-def convert_df_to_numpy(df, tasks, verbose=False):
+def convert_df_to_numpy(df, tasks, nan_value=0.0):
   """Transforms a dataframe containing deepchem input into numpy arrays"""
-  n_samples = df.shape[0]
-  n_tasks = len(tasks)
+  # n_samples = df.shape[0]
+  # n_tasks = len(tasks)
 
-  time1 = time.time()
-  y = np.hstack(
-      [np.reshape(np.array(df[task].values), (n_samples, 1)) for task in tasks])
-  time2 = time.time()
+  y = df[tasks].to_numpy()
+  # time1 = time.time()
+  # y = np.hstack(
+  #     [np.reshape(np.array(df[task].values), (n_samples, 1)) for task in tasks])
+  # time2 = time.time()
 
-  w = np.ones((n_samples, n_tasks))
-  missing = np.zeros_like(y).astype(int)
-  feature_shape = None
+  w = np.where(np.logical_or(np.isnan(y), np.isinf(y)), 0.0, 1.0)
+  y = np.where(np.logical_or(np.isnan(y), np.isinf(y)), nan_value, y)
+  # w = np.ones((n_samples, n_tasks))
+  # missing = np.zeros_like(y).astype(int)
+  # feature_shape = None
 
-  for ind in range(n_samples):
-    for task in range(n_tasks):
-      if y[ind, task] == "":
-        missing[ind, task] = 1
+  # for ind in range(n_samples):
+  #   for task in range(n_tasks):
+  #     if y[ind, task] == "":
+  #       missing[ind, task] = 1
 
   # ids = df[id_field].values
   # Set missing data to have weight zero
-  for ind in range(n_samples):
-    for task in range(n_tasks):
-      if missing[ind, task]:
-        y[ind, task] = 0.
-        w[ind, task] = 0.
+  # for ind in range(n_samples):
+  #   for task in range(n_tasks):
+  #     if missing[ind, task]:
+  #       y[ind, task] = 0.
+  #       w[ind, task] = 0.
 
   return y.astype(float), w.astype(float)
 
@@ -190,7 +193,7 @@ class DataLoader(object):
     self.featurizer = featurizer
     self.log_every_n = log_every_n
 
-  def featurize(self, input_files, data_dir=None, shard_size=8192):
+  def featurize(self, input_files, nan_value=0.0, data_dir=None, shard_size=8192):
     """Featurize provided files and write to specified location.
 
     For large datasets, automatically shards into smaller chunks
@@ -220,7 +223,7 @@ class DataLoader(object):
         ids = ids[valid_inds]
         if len(self.tasks) > 0:
           # Featurize task results iff they exist.
-          y, w = convert_df_to_numpy(shard, self.tasks, self.id_field)
+          y, w = convert_df_to_numpy(shard, self.tasks, nan_value=nan_value)#, self.id_field)
           # Filter out examples where featurization failed.
           y, w = (y[valid_inds], w[valid_inds])
           assert len(X) == len(ids) == len(y) == len(w)

@@ -112,7 +112,7 @@ def load_csv_files(filenames, shard_size=None, verbose=True):
       for df in pd.read_csv(filename, chunksize=shard_size):
         log("Loading shard %d of size %s." % (shard_num, str(shard_size)),
             verbose)
-        df = df.replace(np.nan, str(""), regex=True)
+        # df = df.replace(np.nan, str(""), regex=True)
         shard_num += 1
         yield df
 
@@ -248,7 +248,7 @@ def load_sharded_csv(filenames):
       df = df.replace(np.nan, str(""), regex=True)
       dataframes.append(df)
     else:
-      raise ValueError("Unrecognized filetype for %s" % filename)
+      raise ValueError("Unrecognized filetype for %s" % name)
 
   # combine dataframes
   combined_df = dataframes[0]
