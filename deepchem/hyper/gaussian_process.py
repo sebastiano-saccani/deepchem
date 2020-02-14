@@ -129,31 +129,12 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
                              pr) for pr in hyperparam_range[hp[0]]])
 
     # Dummy names
-    param_name = ['l' + format(i, '02d') for i in range(20)]
-    assert n_param == len(param_range)
-    param = dict(zip(param_name[:n_param], param_range))
-    print(param)
+    param_name = ['l' + format(i, '02d') for i in range(n_param)]
+    param = dict(zip(param_name, param_range))
 
-    def f(l00=0,
-          l01=0,
-          l02=0,
-          l03=0,
-          l04=0,
-          l05=0,
-          l06=0,
-          l07=0,
-          l08=0,
-          l09=0,
-          l10=0,
-          l11=0,
-          l12=0,
-          l13=0,
-          l14=0,
-          l15=0,
-          l16=0,
-          l17=0,
-          l18=0,
-          l19=0):
+    def f(l00=0, l01=0, l02=0, l03=0, l04=0, l05=0, l06=0, l07=0, l08=0, l09=0,
+          l10=0, l11=0, l12=0, l13=0, l14=0, l15=0, l16=0, l17=0, l18=0, l19=0,
+          l20=0, l21=0, l22=0, l23=0, l24=0, l25=0, l26=0, l27=0, l28=0, l29=0,):
       """ Optimizing function
       Take in hyper parameter values and return valid set performances
 
