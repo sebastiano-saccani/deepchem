@@ -347,8 +347,10 @@ class Metric(object):
 
     # y_true = np.array(np.squeeze(y_true[w != 0]))
     # y_pred = np.array(np.squeeze(y_pred[w != 0]))
-    y_pred = np.squeeze(y_pred[np.logical_and(w != 0, np.logical_not(np.isnan(y_true)))])
-    y_true = np.squeeze(y_true[np.logical_and(w != 0, np.logical_not(np.isnan(y_true)))])
+    to_keep = np.logical_and(w != 0, np.logical_not(np.isnan(y_true)))
+    y_pred = np.squeeze(y_pred[to_keep])
+    y_true = np.squeeze(y_true[to_keep])
+    w = np.squeeze(w[to_keep])
 
     if len(y_true.shape) == 0:
       n_samples = 1
@@ -365,6 +367,8 @@ class Metric(object):
     if len(y_pred.shape) == 0:
       y_pred = np.expand_dims(y_pred, 0)
     try:
+      metric_value = self.metric(y_true, y_pred, w)
+    except TypeError:
       metric_value = self.metric(y_true, y_pred)
     except (AssertionError, ValueError) as e:
       warnings.warn("Error calculating metric %s: %s" % (self.name, e))
