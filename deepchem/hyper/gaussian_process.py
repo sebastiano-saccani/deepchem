@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class GaussianProcessHyperparamOpt(HyperparamOpt):
-  """
-  Gaussian Process Global Optimization(GPGO)
-  """
+  """Gaussian Process Global Optimization(GPGO)"""
 
   def hyperparam_search(
       self,
@@ -35,13 +33,12 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       direction=True,
       fit_args={},
       max_iter=20,
-      hp_invalid_list=[
+      hp_invalid_list=(
           'seed', 'nb_epoch', 'penalty_type', #'dropouts', 'bypass_dropouts',
           'n_pair_feat', 'fit_transformers', 'min_child_weight',
           'max_delta_step', 'subsample', 'colsample_bylevel',
           'colsample_bytree', 'reg_alpha', 'reg_lambda', 'scale_pos_weight',
-          'base_score'
-      ],
+          'base_score'),
       log_file='GPhypersearch.log'):
     """Perform hyperparams search using a gaussian process assumption
 
@@ -132,6 +129,9 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     param_name = ['l' + format(i, '02d') for i in range(n_param)]
     param = dict(zip(param_name, param_range))
 
+    self.n_iter = 0
+    self.opt_iter = 0
+    self.opt_score = -np.inf
     def f(l00=0, l01=0, l02=0, l03=0, l04=0, l05=0, l06=0, l07=0, l08=0, l09=0,
           l10=0, l11=0, l12=0, l13=0, l14=0, l15=0, l16=0, l17=0, l18=0, l19=0,
           l20=0, l21=0, l22=0, l23=0, l24=0, l25=0, l26=0, l27=0, l28=0, l29=0,):
@@ -179,10 +179,14 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       # Record performances
       print('Score: {:.4f}\n'.format(score), file=log_file, flush=True)
       # GPGO maximize performance by default, set performance to its negative value for minimization
-      if direction:
-        return score
-      else:
-        return -score
+      score = -score if not direction else score
+      # Record the iteration if it is the optimal one
+      if score > self.opt_score:
+        self.opt_iter = self.n_iter
+        self.opt_score = score
+      self.n_iter += 1
+
+      return score
 
     # GPGO optimization
     cov = matern32()
@@ -212,4 +216,4 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       i = i + hp[-1]
 
     # Return optimized hyperparameters
-    return hyperparam_opt, valid_performance_opt
+    return hyperparam_opt, valid_performance_opt, self.opt_iter
