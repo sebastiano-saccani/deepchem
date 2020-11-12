@@ -265,7 +265,7 @@ class Metric(object):
                      y_pred,
                      w=None,
                      n_classes=2,
-                     filter_nans=True,
+                     filter_nans=False,
                      per_task_metrics=False):
     """Compute a performance metric for each task.
 
