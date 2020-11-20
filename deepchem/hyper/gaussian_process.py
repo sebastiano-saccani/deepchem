@@ -10,6 +10,7 @@ import tempfile
 import os
 from deepchem.hyper.grid_search import HyperparamOpt
 from deepchem.utils.evaluate import Evaluator
+from deepchem.data import DiskDataset
 from deepchem.molnet.run_benchmark_models import benchmark_classification, benchmark_regression
 import pyGPGO
 from pyGPGO.covfunc import matern32
@@ -115,22 +116,21 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     # Range of optimization
     param_range = []
     for hp in hp_list_single:
-      param_range.append(('int' if isinstance(hyperparam_range[hp][0], int) else 'cont',
-                          hyperparam_range[hp]))
+      param_range.append(('int' if isinstance(hyperparam_range[hp][0], int) else 'cont', hyperparam_range[hp]))
     for hp in hp_list_multiple:
       if isinstance(hyperparam_range[hp[0]][-1], int):
         param_range.append(('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
                             hyperparam_range[hp[0]][0]))
       else:
-        param_range.extend([('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont',
-                             pr) for pr in hyperparam_range[hp[0]]])
+        param_range.extend([('int' if isinstance(hyperparam_range[hp[0]][0][0], int) else 'cont', pr)
+                            for pr in hyperparam_range[hp[0]]])
 
     # Dummy names
-    param_name = ['l' + format(i, '02d') for i in range(n_param)]
+    param_name = [f'l{i:02d}' for i in range(n_param)]
     param = dict(zip(param_name, param_range))
 
     self.n_iter = 0
-    self.opt_iter = 0
+    self.opt_iter = -1
     self.opt_score = -np.inf
     def f(l00=0, l01=0, l02=0, l03=0, l04=0, l05=0, l06=0, l07=0, l08=0, l09=0,
           l10=0, l11=0, l12=0, l13=0, l14=0, l15=0, l16=0, l17=0, l18=0, l19=0,
@@ -168,18 +168,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         i = i + hp[-1]
 
       logger.info(hyper_parameters)
-      # Record hyperparameters
-      print('Hyperparams: {}'.format(hyper_parameters), file=log_file, flush=True)
-      model = self.model_class(hyper_parameters)
-      model.fit(train_dataset, **fit_args)
-      # model.save()
-      evaluator = Evaluator(model, valid_dataset, output_transformers)
-      multitask_scores = evaluator.compute_model_performance(metric)
-      score = multitask_scores[metric[0].name]
-      # Record performances
-      print('Score: {:.4f}\n'.format(score), file=log_file, flush=True)
+      # Get the iter score
+      score = self._get_score(hyper_parameters, train_dataset, valid_dataset, fit_args,
+                              output_transformers, metric, log_file, self.opt_iter)
       # GPGO maximize performance by default, set performance to its negative value for minimization
-      score = -score if not direction else score
+      score = - score if not direction else score
       # Record the iteration if it is the optimal one
       if score > self.opt_score:
         self.opt_iter = self.n_iter
@@ -193,7 +186,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     gp = GaussianProcess(cov)
     acq = Acquisition(mode='ExpectedImprovement')
     gpgo = GPGO(gp, acq, f, param)
-    logger.info("Max number of iteration: %i" % max_iter)
+    logger.info(f'Max number of iteration: {max_iter}')
     gpgo.run(max_iter=max_iter)
 
     hp_opt, valid_performance_opt = gpgo.getResult()
@@ -217,3 +210,33 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
 
     # Return optimized hyperparameters
     return hyperparam_opt, valid_performance_opt, self.opt_iter
+
+  def _get_score(self, hyper_parameters, train_dataset, valid_dataset, fit_args,
+                 output_transformers, metric, log_file, opt_iter):
+    # Log hyperparameters
+    print(f'Hyperparams: {hyper_parameters}', file=log_file, flush=True)
+    # Build model and get score
+    if isinstance(train_dataset, (list, tuple)):
+      scores = []
+      for k, valid_fold in enumerate(train_dataset):
+        model = self.model_class(hyper_parameters, opt_iter)
+        with tempfile.TemporaryDirectory(prefix='train', suffix=None, dir=model.model_dir) as merge_dir:
+          model.fit(DiskDataset.merge([data for j, data in enumerate(train_dataset) if j != k],
+                                      merge_dir=merge_dir, verbose=False),
+                    restore=False, **fit_args)
+        score_fold = model.evaluate(valid_fold, metric, output_transformers)[metric[0].name]
+        scores.append(score_fold)
+        print(f' - score: {score_fold:.4f}', file=log_file, flush=True)
+      scores = np.array(scores)
+      weights = np.array(valid_dataset)
+      W = np.sum(weights)
+      score = np.sum(scores * weights) / W
+      score_var = np.sum(np.square(scores - score) * weights) / W
+      print(f'Score iter: {score:.4f}({np.sqrt(score_var):.4f})\n', file=log_file, flush=True)
+    else:
+      model = self.model_class(hyper_parameters, opt_iter)
+      model.fit(train_dataset, **fit_args)
+      score = model.evaluate(valid_dataset, metric, output_transformers)[metric[0].name]
+      print(f'Score iter: {score:.4f}\n', file=log_file, flush=True)
+    return score
+
