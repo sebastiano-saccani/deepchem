@@ -11,7 +11,7 @@ from deepchem.metrics import to_one_hot
 from deepchem.models import KerasModel, layers
 from deepchem.models.losses import L2Loss, SoftmaxCrossEntropy
 from deepchem.trans import undo_transforms
-from tensorflow.keras.layers import Input, Dense, Reshape, Softmax, Dropout, Activation, BatchNormalization
+from tensorflow.keras.layers import Input, Dense, Reshape, Softmax, Dropout, Activation, BatchNormalization, Concatenate
 
 
 class TrimGraphOutput(tf.keras.layers.Layer):
@@ -37,6 +37,8 @@ class WeaveModel(KerasModel):
                n_pair_feat=14,
                n_hidden=50,
                n_graph_feat=128,
+               n_extra_feat=0,
+               n_dense_layers=0,
                mode="classification",
                n_classes=2,
                batch_size=100,
@@ -67,6 +69,10 @@ class WeaveModel(KerasModel):
     self.n_pair_feat = n_pair_feat
     self.n_hidden = n_hidden
     self.n_graph_feat = n_graph_feat
+    self.n_extra_feat = n_extra_feat
+    self.n_dense_layers = n_dense_layers
+    if self.n_extra_feat > 0 and not self.n_dense_layers > 0:
+      raise ValueError('If extra features are included, at least one final dense layer should be added')
     self.mode = mode
     self.n_classes = n_classes
 
@@ -96,28 +102,37 @@ class WeaveModel(KerasModel):
         batch_size, n_input=self.n_graph_feat,
         gaussian_expand=True)([batch_norm1, atom_split])
 
+    if self.n_extra_feat:
+      extra_features = Input(shape=(self.n_extra_feat,))
+      in_dense = Concatenate(axis=-1)([weave_gather, extra_features])
+    else:
+      in_dense = weave_gather
+
+    for i in range(self.n_dense_layers):
+      in_dense = Dense(self.n_graph_feat, activation=tf.nn.relu)(in_dense)
+      in_dense = BatchNormalization(epsilon=1e-5)(in_dense)
+
     n_tasks = self.n_tasks
     if self.mode == 'classification':
       n_classes = self.n_classes
       logits = Reshape((n_tasks,
-                        n_classes))(Dense(n_tasks * n_classes)(weave_gather))
+                        n_classes))(Dense(n_tasks * n_classes)(in_dense))
       output = Softmax()(logits)
       outputs = [output, logits]
       output_types = ['prediction', 'loss']
       if loss is None:
         loss = SoftmaxCrossEntropy()
     else:
-      output = Dense(n_tasks)(weave_gather)
+      output = Dense(n_tasks)(in_dense)
       outputs = [output]
       output_types = ['prediction']
       if loss is None:
         loss = L2Loss()
     self.loss = loss
-    model = tf.keras.Model(
-        inputs=[
-            atom_features, pair_features, pair_split, atom_split, atom_to_pair
-        ],
-        outputs=outputs)
+    inputs = [atom_features, pair_features, pair_split, atom_split, atom_to_pair]
+    if self.n_extra_feat:
+      inputs.append(extra_features)
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
     super(WeaveModel, self).__init__(
         model, loss, output_types=output_types, batch_size=batch_size, **kwargs)
 
@@ -136,13 +151,19 @@ class WeaveModel(KerasModel):
           if self.mode == 'classification':
             y_b = to_one_hot(y_b.flatten(), self.n_classes).reshape(
                 -1, self.n_tasks, self.n_classes)
+        if self.n_extra_feat:
+          X_mol, X_extra = np.split(X_b, (1,), axis=1)
+          X_mol = X_mol.reshape((-1,))
+          X_extra = X_extra.astype(np.float)
+        else:
+          X_mol = X_b
         atom_feat = []
         pair_feat = []
         atom_split = []
         atom_to_pair = []
         pair_split = []
         start = 0
-        for im, mol in enumerate(X_b):
+        for im, mol in enumerate(X_mol):
           n_atoms = mol.get_num_atoms()
           # number of atoms in each molecule
           atom_split.extend([im] * n_atoms)
@@ -170,6 +191,8 @@ class WeaveModel(KerasModel):
             np.array(atom_split),
             np.concatenate(atom_to_pair, axis=0)
         ]
+        if self.n_extra_feat:
+          inputs.append(X_extra)
         yield (inputs, [y_b], [w_b])
 
 
@@ -511,6 +534,8 @@ class GraphConvModel(KerasModel):
                dropout=0.0,
                mode="classification",
                number_atom_features=75,
+               n_extra_feat=0,
+               n_dense_layers=0,
                n_classes=2,
                loss=None,
                uncertainty=False,
@@ -549,11 +574,15 @@ class GraphConvModel(KerasModel):
     self.dense_layer_size = dense_layer_size
     self.graph_conv_layers = graph_conv_layers
     self.number_atom_features = number_atom_features
+    self.n_extra_feat = n_extra_feat
+    self.n_dense_layers = n_dense_layers
+    if self.n_extra_feat > 0 and not self.n_dense_layers > 0:
+      raise ValueError('If extra features are included, at least one final dense layer should be added')
     self.n_classes = n_classes
     self.uncertainty = uncertainty
     if not isinstance(dropout, collections.Sequence):
-      dropout = [dropout] * (len(graph_conv_layers) + 1)
-    if len(dropout) != len(graph_conv_layers) + 1:
+      dropout = [dropout] * (len(graph_conv_layers) + 1 + n_dense_layers)
+    if len(dropout) != len(graph_conv_layers) + 1 + n_dense_layers:
       raise ValueError('Wrong number of dropout probabilities provided')
     self.dropout = dropout
     if uncertainty:
@@ -587,19 +616,34 @@ class GraphConvModel(KerasModel):
       in_layer = layers.GraphPool()(gp_in)
     dense = Dense(self.dense_layer_size, activation=tf.nn.relu)(in_layer)
     batch_norm3 = BatchNormalization(fused=False)(dense)
-    if self.dropout[-1] > 0.0:
-      batch_norm3 = layers.SwitchedDropout(rate=self.dropout[-1])(
+    if self.dropout[len(self.graph_conv_layers)] > 0.0:
+      batch_norm3 = layers.SwitchedDropout(rate=self.dropout[len(self.graph_conv_layers)])(
           [batch_norm3, dropout_switch])
     self.neural_fingerprint = layers.GraphGather(
         batch_size=batch_size,
         activation_fn=tf.nn.tanh)([batch_norm3, degree_slice, membership] +
                                   self.deg_adjs)
 
+    if self.n_extra_feat:
+      extra_features = Input(shape=(self.n_extra_feat,))
+      input_extra = [extra_features]
+      mol_features = TrimGraphOutput()([self.neural_fingerprint, n_samples])
+      in_dense = Concatenate(axis=-1)([mol_features, extra_features])
+    else:
+      input_extra = []
+      in_dense = self.neural_fingerprint
+
+    for i, do in enumerate(self.dropout[len(self.graph_conv_layers) + 1:]):
+      in_dense = Dense(self.dense_layer_size, activation=tf.nn.relu)(in_dense)
+      in_dense = BatchNormalization(fused=False)(in_dense)
+      if do > 0.0:
+        in_dense = layers.SwitchedDropout(rate=do)([in_dense, dropout_switch])
+
     n_tasks = self.n_tasks
     if self.mode == 'classification':
       n_classes = self.n_classes
       logits = Reshape((n_tasks, n_classes))(Dense(n_tasks * n_classes)(
-          self.neural_fingerprint))
+          in_dense))
       logits = TrimGraphOutput()([logits, n_samples])
       output = Softmax()(logits)
       outputs = [output, logits]
@@ -607,10 +651,10 @@ class GraphConvModel(KerasModel):
       if loss is None:
         loss = SoftmaxCrossEntropy()
     else:
-      output = Dense(n_tasks)(self.neural_fingerprint)
+      output = Dense(n_tasks)(in_dense)
       output = TrimGraphOutput()([output, n_samples])
       if self.uncertainty:
-        log_var = Dense(n_tasks)(self.neural_fingerprint)
+        log_var = Dense(n_tasks)(in_dense)
         log_var = TrimGraphOutput()([log_var, n_samples])
         var = Activation(tf.exp)(log_var)
         outputs = [output, var, output, log_var]
@@ -625,10 +669,9 @@ class GraphConvModel(KerasModel):
         if loss is None:
           loss = L2Loss()
     self.loss = loss
+    inputs_mol = [atom_features, degree_slice, membership, n_samples, dropout_switch] + self.deg_adjs
     model = tf.keras.Model(
-        inputs=[
-            atom_features, degree_slice, membership, n_samples, dropout_switch
-        ] + self.deg_adjs,
+        inputs=input_extra + inputs_mol,
         outputs=outputs)
     super(GraphConvModel, self).__init__(
         model, loss, output_types=output_types, batch_size=batch_size, **kwargs)
@@ -647,13 +690,21 @@ class GraphConvModel(KerasModel):
         if y_b is not None and self.mode == 'classification':
           y_b = to_one_hot(y_b.flatten(), self.n_classes).reshape(
               -1, self.n_tasks, self.n_classes)
-        multiConvMol = ConvMol.agglomerate_mols(X_b)
-        n_samples = np.array(X_b.shape[0])
+        if self.n_extra_feat:
+          X_mol, X_extra = np.split(X_b, (1,), axis=1)
+          X_mol = X_mol.reshape((-1,))
+          X_extra = X_extra.astype(np.float)
+          inputs = [X_extra]
+        else:
+          X_mol = X_b
+          inputs = []
+        multiConvMol = ConvMol.agglomerate_mols(X_mol)
+        n_samples = np.array(X_mol.shape[0])
         if mode == 'predict':
           dropout = np.array(0.0)
         else:
           dropout = np.array(1.0)
-        inputs = [
+        inputs += [
             multiConvMol.get_atom_features(), multiConvMol.deg_slice,
             np.array(multiConvMol.membership), n_samples, dropout
         ]

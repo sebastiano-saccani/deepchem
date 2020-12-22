@@ -16,7 +16,7 @@ from deepchem.models import KerasModel
 from deepchem.models.layers import SwitchedDropout
 from deepchem.utils.save import log
 from deepchem.metrics import to_one_hot, from_one_hot
-from tensorflow.keras.layers import Input, Dense, Reshape, Softmax, Dropout, Activation
+from tensorflow.keras.layers import Input, Dense, Reshape, Softmax, Dropout, Activation, Concatenate
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ class MultitaskClassifier(KerasModel):
   def __init__(self,
                n_tasks,
                n_features,
+               n_extra_feat=0,
                layer_sizes=[1000],
                weight_init_stddevs=0.02,
                bias_init_consts=1.0,
@@ -77,6 +78,7 @@ class MultitaskClassifier(KerasModel):
     """
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.n_extra_feat = n_extra_feat
     self.n_classes = n_classes
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
@@ -98,7 +100,12 @@ class MultitaskClassifier(KerasModel):
     # Add the input features.
 
     mol_features = Input(shape=(n_features,))
-    prev_layer = mol_features
+    if self.n_extra_feat > 0:
+      inputs = [mol_features, Input(shape=(self.n_extra_feat,))]
+      prev_layer = Concatenate(axis=-1)(inputs)
+    else:
+      inputs = mol_features
+      prev_layer = mol_features
 
     # Add the dense layers
 
@@ -119,7 +126,7 @@ class MultitaskClassifier(KerasModel):
     logits = Reshape((n_tasks,
                       n_classes))(Dense(n_tasks * n_classes)(prev_layer))
     output = Softmax()(logits)
-    model = tf.keras.Model(inputs=mol_features, outputs=[output, logits])
+    model = tf.keras.Model(inputs=inputs, outputs=[output, logits])
     if loss is None:
       loss = dc.models.losses.SoftmaxCrossEntropy()
     super(MultitaskClassifier, self).__init__(
@@ -142,7 +149,11 @@ class MultitaskClassifier(KerasModel):
         if y_b is not None:
           y_b = to_one_hot(y_b.flatten(), self.n_classes).reshape(
               -1, self.n_tasks, self.n_classes)
-        yield ([X_b], [y_b], [w_b])
+        if self.n_extra_feat:
+          inputs = np.split(X_b, (self.n_features,), axis=1)
+        else:
+          inputs = [X_b]
+        yield (inputs, [y_b], [w_b])
 
 
 class MultitaskRegressor(KerasModel):
@@ -150,6 +161,7 @@ class MultitaskRegressor(KerasModel):
   def __init__(self,
                n_tasks,
                n_features,
+               n_extra_feat=0,
                layer_sizes=[1000],
                weight_init_stddevs=0.02,
                bias_init_consts=1.0,
@@ -198,6 +210,7 @@ class MultitaskRegressor(KerasModel):
     """
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.n_extra_feat = n_extra_feat
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * (n_layers + 1)
@@ -223,7 +236,13 @@ class MultitaskRegressor(KerasModel):
 
     mol_features = Input(shape=(n_features,))
     dropout_switch = Input(shape=tuple())
-    prev_layer = mol_features
+    if self.n_extra_feat > 0:
+      extra_features = Input(shape=(self.n_extra_feat,))
+      inputs = [mol_features, extra_features, dropout_switch]
+      prev_layer = Concatenate(axis=-1)([mol_features, extra_features])
+    else:
+      inputs = [mol_features, dropout_switch]
+      prev_layer = mol_features
 
     # Add the dense layers
 
@@ -266,7 +285,7 @@ class MultitaskRegressor(KerasModel):
       if loss is None:
         loss = dc.models.losses.L2Loss()
     model = tf.keras.Model(
-        inputs=[mol_features, dropout_switch], outputs=outputs)
+        inputs=inputs, outputs=outputs)
     super(MultitaskRegressor, self).__init__(
         model, loss, output_types=output_types, **kwargs)
 
@@ -285,7 +304,11 @@ class MultitaskRegressor(KerasModel):
           dropout = np.array(0.0)
         else:
           dropout = np.array(1.0)
-        yield ([X_b, dropout], [y_b], [w_b])
+        if self.n_extra_feat:
+          X_inputs = np.split(X_b, (self.n_features,), axis=1)
+        else:
+          X_inputs = [X_b]
+        yield (X_inputs + [dropout], [y_b], [w_b])
 
 
 class MultitaskFitTransformRegressor(MultitaskRegressor):

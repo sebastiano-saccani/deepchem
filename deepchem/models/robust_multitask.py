@@ -22,6 +22,7 @@ class RobustMultitaskClassifier(KerasModel):
   def __init__(self,
                n_tasks,
                n_features,
+               n_extra_feat=0,
                layer_sizes=[1000],
                weight_init_stddevs=0.02,
                bias_init_consts=1.0,
@@ -80,6 +81,7 @@ class RobustMultitaskClassifier(KerasModel):
     """
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.n_extra_feat = n_extra_feat
     self.n_classes = n_classes
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
@@ -110,7 +112,12 @@ class RobustMultitaskClassifier(KerasModel):
 
     # Add the input features.
     mol_features = tf.keras.Input(shape=(n_features,))
-    prev_layer = mol_features
+    if self.n_extra_feat:
+      inputs = [mol_features, tf.keras.Input(shape=(self.n_extra_feat,))]
+      prev_layer = tf.keras.layers.Concatenate(axis=-1)(inputs)
+    else:
+      inputs = mol_features
+      prev_layer = mol_features
 
     # Add the shared dense layers
     for size, weight_stddev, bias_const, dropout, activation_fn in zip(
@@ -130,7 +137,7 @@ class RobustMultitaskClassifier(KerasModel):
 
     task_outputs = []
     for i in range(self.n_tasks):
-      prev_layer = mol_features
+      prev_layer = inputs
       # Add task-specific bypass layers
       for size, weight_stddev, bias_const, dropout, activation_fn in zip(
           bypass_layer_sizes, bypass_weight_init_stddevs,
@@ -158,7 +165,7 @@ class RobustMultitaskClassifier(KerasModel):
 
     logits = Stack(axis=1)(task_outputs)
     output = tf.keras.layers.Softmax()(logits)
-    model = tf.keras.Model(inputs=mol_features, outputs=[output, logits])
+    model = tf.keras.Model(inputs=inputs, outputs=[output, logits])
     if loss is None:
       loss = SoftmaxCrossEntropy()
     super(RobustMultitaskClassifier, self).__init__(
@@ -181,7 +188,11 @@ class RobustMultitaskClassifier(KerasModel):
         if y_b is not None:
           y_b = to_one_hot(y_b.flatten(), self.n_classes).reshape(
               -1, self.n_tasks, self.n_classes)
-        yield ([X_b], [y_b], [w_b])
+        if self.n_extra_feat:
+          inputs = np.split(X_b, (self.n_features,), axis=1)
+        else:
+          inputs = [X_b]
+        yield (inputs, [y_b], [w_b])
 
   def create_estimator_inputs(self, feature_columns, weight_column, features,
                               labels, mode):
@@ -208,6 +219,7 @@ class RobustMultitaskRegressor(KerasModel):
   def __init__(self,
                n_tasks,
                n_features,
+               n_extra_feat=0,
                layer_sizes=[1000],
                weight_init_stddevs=0.02,
                bias_init_consts=1.0,
@@ -263,6 +275,7 @@ class RobustMultitaskRegressor(KerasModel):
     """
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.n_extra_feat = n_extra_feat
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * n_layers
@@ -292,9 +305,15 @@ class RobustMultitaskRegressor(KerasModel):
 
     # Add the input features.
     mol_features = tf.keras.Input(shape=(n_features,))
-    prev_layer = mol_features
+    if self.n_extra_feat:
+      inputs = [mol_features, tf.keras.Input(shape=(self.n_extra_feat,))]
+      input_layer = tf.keras.layers.Concatenate(axis=-1)(inputs)
+    else:
+      inputs = mol_features
+      input_layer = mol_features
 
     # Add the shared dense layers
+    prev_layer = input_layer
     for size, weight_stddev, bias_const, dropout, activation_fn in zip(
         layer_sizes, weight_init_stddevs, bias_init_consts, dropouts,
         activation_fns):
@@ -312,7 +331,7 @@ class RobustMultitaskRegressor(KerasModel):
 
     task_outputs = []
     for i in range(self.n_tasks):
-      prev_layer = mol_features
+      prev_layer = input_layer
       # Add task-specific bypass layers
       for size, weight_stddev, bias_const, dropout, activation_fn in zip(
           bypass_layer_sizes, bypass_weight_init_stddevs,
@@ -339,7 +358,24 @@ class RobustMultitaskRegressor(KerasModel):
       task_outputs.append(task_out)
 
     outputs = tf.keras.layers.Concatenate(axis=1)(task_outputs)
-    model = tf.keras.Model(inputs=mol_features, outputs=outputs)
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
     if loss is None:
       loss = L2Loss()
     super(RobustMultitaskRegressor, self).__init__(model, loss, **kwargs)
+
+  def default_generator(self,
+                        dataset,
+                        epochs=1,
+                        mode='fit',
+                        deterministic=True,
+                        pad_batches=True):
+    for epoch in range(epochs):
+      for (X_b, y_b, w_b, ids_b) in dataset.iterbatches(
+          batch_size=self.batch_size,
+          deterministic=deterministic,
+          pad_batches=pad_batches):
+        if self.n_extra_feat:
+          inputs = np.split(X_b, (self.n_features,), axis=1)
+        else:
+          inputs = [X_b]
+        yield (inputs, [y_b], [w_b])

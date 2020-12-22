@@ -973,7 +973,7 @@ class DiskDataset(Dataset):
                  y=None,
                  w=None,
                  ids=None,
-                 tasks=None,
+                 tasks=[],
                  data_dir=None,
                  verbose=True):
     """Creates a DiskDataset object from specified Numpy arrays."""
@@ -988,7 +988,7 @@ class DiskDataset(Dataset):
         else:
           w = np.ones((y.shape[0], 1), np.float32)
 
-      if tasks is None:
+      if not tasks:
         if len(y.shape) > 1:
           n_tasks = y.shape[1]
         else:
@@ -1001,10 +1001,10 @@ class DiskDataset(Dataset):
                       UserWarning)
         w = None
 
-      if tasks is not None:
-        warnings.warn('y is None but tasks is not None. Setting tasks to None',
+      if tasks:
+        warnings.warn('y is None but tasks is not empty. Setting tasks to empty list',
                       UserWarning)
-        tasks = None
+        tasks = []
 
     # raw_data = (X, y, w, ids)
     return DiskDataset.create_dataset(

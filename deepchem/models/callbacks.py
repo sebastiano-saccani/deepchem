@@ -27,7 +27,8 @@ class ValidationCallback(object):
                dataset,
                interval,
                metrics,
-               output_file=sys.stdout,
+               label=None,
+               output_file=None,
                save_dir=None,
                save_metric=0,
                save_on_minimum=True):
@@ -43,7 +44,7 @@ class ValidationCallback(object):
       metrics to compute on the validation set
     output_file: file
       to file to which results should be written
-    save_dir: str
+    save_dir: None or str
       if not None, the model parameters that produce the best validation score
       will be written to this directory
     save_metric: int
@@ -57,6 +58,7 @@ class ValidationCallback(object):
     self.dataset = dataset
     self.interval = interval
     self.metrics = metrics
+    self.label = label
     self.output_file = output_file
     self.save_dir = save_dir
     self.save_metric = save_metric
@@ -76,13 +78,15 @@ class ValidationCallback(object):
     if step % self.interval != 0:
       return
     scores = model.evaluate(self.dataset, self.metrics)
-    message = 'Step %d validation:' % step
-    for key in scores:
-      message += ' %s=%g' % (key, scores[key])
-    print(message, file=self.output_file)
-    if model.tensorboard:
+    if self.output_file is not None:
+      message = 'Step %d validation:' % step
       for key in scores:
-        model._log_value_to_tensorboard(tag=key, simple_value=scores[key])
+        message += ' %s=%g' % (key, scores[key])
+      print(message, file=self.output_file)
+    if model.tensorboard:
+      for key, score in scores.items():
+        tag = key + f'_{self.label}' if self.label is not None else ''
+        model._log_value_to_tensorboard(tag=tag, simple_value=score)
     if self.save_dir is not None:
       score = scores[self.metrics[self.save_metric].name]
       if not self.save_on_minimum:

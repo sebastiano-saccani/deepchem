@@ -429,24 +429,25 @@ class KerasModel(Model):
       avg_loss += batch_loss
 
       # Report progress and write checkpoints.
-      averaged_batches += 1
-      should_log = (current_step % self.tensorboard_log_frequency == 0)
-      if should_log:
-        avg_loss = float(avg_loss) / averaged_batches
-        logger.info(
-            'Ending global_step %d: Average loss %g' % (current_step, avg_loss))
-        avg_loss = 0.0
-        averaged_batches = 0
+      averaged_batches += (np.sum(weights[0], axis=1) > 0.).sum()
 
       if checkpoint_interval > 0 and current_step % checkpoint_interval == checkpoint_interval - 1:
         self._exec_with_session(lambda: manager.save())
       for c in callbacks:
         c(self, current_step)
-      if self.tensorboard and should_log:
-        self._log_value_to_tensorboard(tag='loss', simple_value=batch_loss)
-        self._summary_writer.reopen()
-        self._summary_writer.add_summary(self._current_summary, current_step)
-        self._summary_writer.close()
+
+      should_log = (current_step % self.tensorboard_log_frequency == 0)
+      if should_log:
+        avg_loss = float(avg_loss) / averaged_batches
+        logger.info(
+            'Ending global_step %d: Average loss %g' % (current_step, avg_loss))
+        if self.tensorboard:
+          self._log_value_to_tensorboard(tag='loss', simple_value=avg_loss)
+          self._summary_writer.reopen()
+          self._summary_writer.add_summary(self._current_summary, current_step)
+          self._summary_writer.close()
+        avg_loss = 0.0
+        averaged_batches = 0
 
     # Report final results.
     if averaged_batches > 0:
@@ -979,7 +980,11 @@ class KerasModel(Model):
     """
     if model_dir is None:
       model_dir = self.model_dir
-    return tf.train.get_checkpoint_state(model_dir).all_model_checkpoint_paths
+    ckpt_state = tf.train.get_checkpoint_state(model_dir)
+    if ckpt_state is None:
+      return ()
+    else:
+      return ckpt_state.all_model_checkpoint_paths
 
   def restore(self, checkpoint=None, model_dir=None, session=None):
     """Reload the values of all variables from a checkpoint file.
